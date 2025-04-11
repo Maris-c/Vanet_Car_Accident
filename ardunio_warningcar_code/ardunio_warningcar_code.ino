@@ -2,7 +2,7 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <TinyGPSPlus.h>
-#include <SoftwareSerial.h>
+// #include <SoftwareSerial.h>
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
@@ -13,7 +13,7 @@
 
 #define CAR_ID "C6881"
 #define GMT 7
-static const int RXPin = 4, TXPin = 5;
+static const int RXPin = 1, TXPin = 0 ;
 static const uint32_t GPSBaud = 9600;
 #define CE_PIN 9
 #define CSN_PIN 10
@@ -25,15 +25,15 @@ enum Severity {
 };
 
 TinyGPSPlus gps;
-SoftwareSerial ss(RXPin, TXPin);
+// SoftwareSerial ss(RXPin, TXPin);
 
 Adafruit_MPU6050 mpu;
 
 RF24 radio(CE_PIN, CSN_PIN);
 static const byte address[6] = "00001";
 
-static const int trig = 2;
-static const int echo = 3;
+static const int trig = 5;
+static const int echo = 6;
 
 static sensors_event_t a, g, temp;
 static unsigned long duration; 
@@ -50,16 +50,16 @@ static void printGPS();
 static void sendData(char* time, float lng, float lat);
 static void encodeGPS(unsigned long ms);
 static void processDataMPU6050();
-static int getDistance();
-static bool isAccident(float roll, float pitch, int distance);
+static void getDistance();
+static Severity isAccident(float roll, float pitch, int distance);
 static void getCoordinates();
-static bool IsBlockingWay(Severity sev);
+static bool isBlockingWay(Severity sev);
 static String severityCar(Severity sev);
 
 void setup() {
   Serial.begin(9600); // Khởi động Serial với baudrate 9600
-  ss.begin(GPSBaud); // Khởi động SoftwareSerial
-  while (!Serial);
+  // ss.begin(GPSBaud); // Khởi động SoftwareSerial
+  // while (!Serial);
   pinMode(trig, OUTPUT);
   pinMode(echo, INPUT); 
 
@@ -87,22 +87,32 @@ void setup() {
 }
 
 void loop() {
-  distance = getDistance();
+  getDistance();
   processDataMPU6050();
   delay(100);
 
   // Phát tín hiệu cảnh báo khi góc nghiêng vượt quá điều kiện
-  if (isAccident(roll, pitch, distance)) {
-    int count = 0;
-    while (1) {
-      getCoordinates();
-      delay(100);
-      sendData(dateTime, lng, lat);
-      // delay(1000);
-      count++;
-      if (count == 5) break;
-    }
-  }
+  // if (isAccident(roll, pitch, distance)) {
+  //   int count = 0;
+  //   while (1) {
+  //     getCoordinates();
+  //     delay(100);
+  //     sendData(dateTime, lng, lat);
+  //     // delay(1000);
+  //     count++;
+  //     if (count == 5) break;
+  //   }
+  // }
+
+  Severity acc = isAccident(roll, pitch, distance);
+  String sev = severityCar(acc);
+  bool bway = isBlockingWay(acc);
+  Serial.print("Severity is ");
+  Serial.println(sev);
+
+  Serial.print("Is block way: ");
+  Serial.println(bway);
+  Serial.println(distance);
 
   delay(250);
 }
@@ -111,8 +121,8 @@ static void encodeGPS(unsigned long ms) {
   unsigned long start = millis();
   do 
   {
-    while (ss.available())
-      gps.encode(ss.read());
+    while (Serial.available())
+      gps.encode(Serial.read());
   } while (millis() - start < ms);
 }
 
@@ -129,7 +139,7 @@ static void processDataMPU6050() {
   pitch = atan2(-accel_x, sqrt(accel_y * accel_y + accel_z * accel_z)) * 180.0 / PI;
 }
 
-static int getDistance() {
+static void getDistance() {
   // Lấy dữ liệu từ module khoảng cách
   digitalWrite(trig,0);
   delayMicroseconds(2);
@@ -137,11 +147,13 @@ static int getDistance() {
   delayMicroseconds(5);
   digitalWrite(trig,0);
   duration = pulseIn(echo,HIGH);
-  return int(duration/2/29.412);
+  distance = int(duration/2/29.412);
 }
 
-static bool isAccident(float roll, float pitch, int distance) {
-  return roll > 58 || roll < -58 || pitch > 69 || pitch < -69 || distance < 3;
+static Severity isAccident(float roll, float pitch, int distance) {
+  if (roll > 20 || roll < -20 || pitch > 30 || pitch < -30 || distance < 4) return 0;
+  if (roll > 30 || roll < -30 || pitch > 40 || pitch < -40 || distance < 3) return 1;
+  if (roll > 40 || roll < -40 || pitch > 50 || pitch < -50 || distance <= 1) return 2;
 }
 
 static void getCoordinates() {
@@ -174,13 +186,13 @@ static String severityCar(Severity sev) {
   return label;
 }
 
-bool IsBlockingWay(Severity sev) {  
+bool isBlockingWay(Severity sev) {  
   switch (sev) {
-    case SLOW:
+    case 0:
         return false;
-    case SMEDIUM:
+    case 1:
         return true;
-    case SHIGH:
+    case 2:
         return true;
     default:
         return false;
@@ -199,7 +211,7 @@ static void sendData(char* time, float lon, float lat) {
   int minute = t.minute();
   int second = t.second();
   String sev = severityCar(2);
-  bool block = IsBlockingWay(2);
+  bool block = isBlockingWay(2);
   sprintf(dateTime, "%02d%02d%2d-%02d%02d%02d", day, month, year, hour + GMT, minute, second);
   doc["VId"] = CAR_ID;
   serializeJson(doc, jsonString);

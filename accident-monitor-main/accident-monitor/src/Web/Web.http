@@ -1,0 +1,45 @@
+﻿# For more info on HTTP files go to https://aka.ms/vs/httpfile
+@Web_HostAddress = https://localhost:5001
+
+@Email=administrator@localhost
+@Password=Administrator1!
+@BearerToken=CfDJ8GyRWz22JMdDpZWF3elwPCxHrzHBetPtg-JOvnQrjX_x9u3ml39UkRoR8UBwxV4hC4Iob-QWgqtCohBXY7-7mX36ICuJRDAAG0EjIRVrJR97yt5-zEwzimJUM8CerR9d1aFxM6chY40mK_mJ6jk6S8qgFP61h2FX-TDKJkcR6VP1xA9Xuw5ZCEiQk1bt23bRdNkYn5fLAjDGl-DcunFyZcRZUNN2DBNn9_q19_pvooA-sx1NJZUxJKXXTcJTsWhjJkYy1CdsfTFSNolMwpxRS05qxwDjTYqQCuwvgW6PhfuDIvyPmXmMjsD_D0nGVt53k1ae4aP9HUEDkO3Xxa3ndY_smScpkJa9jpMEEQSCyh5QKfPuKVN09sUfEwVoMbaop9zkbrZaYxE1bHo77cjk6PzusaAsXijWJMYn83-MXBJoJUrCWyd1TaRDOswdg2UJ9H2rgTIKBpEeaEIagXvL4bFQU8Z17WJ4cPUcjJgs3rvVpRwpoIjzu-M5pOyFVTQcvIgzS5dWeiyQFPaV8JxrwUKfKLk24jXesnKNI63v4vY4cPQ_R-bBYZwosmxZj-WT3_P7PwCejRXPA_MXaGwlS5orAFralJYXtg6qRV_E15Q4yL7k3ngjO3K7pqciXETHkfN-6EyXDnGNNkDUXYY0ME479tDBpMz7kCOde32ABNbs6lbv3ZLsPWlJDoZhq7k4d5Yai6bb4SLcRVoSYH4UIKHXkAjuBiyp3JTSJOX-FTZlNdhA4T1X9guKekg1TPr58euSclhaNqBRPBFYOmqgwzyrdMouwBWdNcxau2brM8u1FPY4JgnGVpYioSKfhnwYpQ
+
+# POST Users Register
+POST {{Web_HostAddress}}/api/Users/Register
+Content-Type: application/json
+
+{
+  "email": "{{Email}}",
+  "password": "{{Password}}"
+}
+
+###
+
+# POST Users Login
+POST {{Web_HostAddress}}/api/Users/Login
+Content-Type: application/json
+
+{
+  "email": "{{Email}}",
+  "password": "{{Password}}"
+}
+
+###
+
+# POST Users Refresh
+POST {{Web_HostAddress}}/api/Users/Refresh
+Authorization: Bearer {{BearerToken}}
+Content-Type: application/json
+
+{
+  "refreshToken": ""
+}
+
+###
+
+# GET WeatherForecast
+GET {{Web_HostAddress}}/api/WeatherForecasts
+Authorization: Bearer {{BearerToken}}
+
+###

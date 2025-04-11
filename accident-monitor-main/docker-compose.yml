@@ -1,0 +1,133 @@
+services:
+  # ----------------- event-driven applications ------------------- #
+  # node-red:
+  #   image: nodered/node-red:latest
+  #   container_name: node-red
+  #   ports:
+  #     - "1881:1880"
+  #   volumes:
+  #     - ./rednode-docker/data:/data
+  #   restart: unless-stopped
+  #   deploy:
+  #     restart_policy:
+  #       condition: on-failure
+  #       delay: 5s
+  #       max_attempts: 5
+  #       window: 120s
+  #   networks:
+  #     - net_sim
+  # -------------------------- MQTT broker ------------------------ #
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    hostname: mosquitto
+    container_name: mosquitto
+    ports:
+      - "1883:1883" # Base port
+      # - "9001:9001"
+    stdin_open: true 
+    tty: true
+    volumes:
+      - ./mosquitto-docker/config:/mosquitto/config
+      - ./mosquitto-docker/data:/mosquitto/data
+      - ./mosquitto-docker/log:/mosquitto/log
+    restart: unless-stopped
+    # deploy:
+    #   restart_policy:
+    #     condition: on-failure
+    #     delay: 5s
+    #     max_attempts: 5
+    #     window: 120s
+    networks:
+      - net_sim
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-h", "127.0.0.1", "-p", "1880", "-t", "$$SYS/#", "-C", "1", "-i", "healthcheck", "-W", "3"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+  # ---------------- ORS application configuration ---------------- #
+  ors-app:
+    container_name: ors-app
+    ports:
+      - "8080:80" 
+    image: openrouteservice/openrouteservice:v9.1.1
+    # user: "1000:1000" 
+    volumes: 
+      - ./ors-docker:/home/ors 
+    environment:
+      REBUILD_GRAPHS: True  
+      CONTAINER_LOG_LEVEL: INFO  
+      ORS_CONFIG_LOCATION: /home/ors/config/vietnam-latest.osm.yml  
+      XMS: 1g  # start RAM assigned to java
+      XMX: 7g  # max RAM assigned to java. Rule of Thumb: <PBF-size> * <profiles> * 2
+      # Example: 1.5 GB pbf size, two profiles (car and foot-walking)
+      # -> 1.5 * 2 * 2 = 6. Set xmx to be AT LEAST `-Xmx6g`
+      ADDITIONAL_JAVA_OPTS: "" 
+    networks:
+      - net_sim
+    healthcheck:
+     test: wget --no-verbose --tries=1 --spider http://localhost:8080/ors/v2/health || exit 1
+     start_period: 10m
+     interval: 30s
+     timeout: 2s
+     retries: 3
+     disable: true
+    # deploy:
+    #   restart_policy:
+    #     condition: on-failure
+    #     delay: 5s
+    #     max_attempts: 5
+    #     window: 120s
+    restart: unless-stopped
+
+  # -------------------------- Accident monitor DB ------------------------ #
+
+  accident-monitor-db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=${Sa_Password:-#TaoSieuDepTrai123}
+      - MSSQL_PID=Developer
+    ports:
+      - 1433:1433
+    volumes:
+      - accident_monitor_data:/var/opt/mssql
+    restart: unless-stopped
+    healthcheck:
+          test: /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$${SA_PASSWORD}" -Q "SELECT 1" -b -o /dev/null
+          interval: 10s
+          timeout: 3s
+          retries: 10
+          start_period: 10s
+    networks:
+      - net_sim
+  accident-monitor-db.configurator:
+    image: mcr.microsoft.com/mssql/server:2019-latest
+    volumes:
+      - ./accident-monitor-db/init:/docker-entrypoint-initdb.d
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=${Sa_Password:-#TaoSieuDepTrai123}
+    depends_on:
+      accident-monitor-db:
+        condition: service_healthy
+    command: >
+      bash -c '
+      /opt/mssql-tools18/bin/sqlcmd -C -S accident-monitor-db -U sa -P "$${SA_PASSWORD}" -d master -i docker-entrypoint-initdb.d/init.sql;
+      echo "All done!";'
+    networks:
+      - net_sim
+    restart: on-failure
+
+networks:
+  net_sim:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: br0
+volumes:
+  accident_monitor_data:
+#     driver: local
+#     driver_opts:
+#       type: none
+#       device: /home/accident_monitor_data
+#       o: bind

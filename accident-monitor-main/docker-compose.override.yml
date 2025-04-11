@@ -1,0 +1,43 @@
+services:
+  # -------------------------- Accident monitor ------------------------ #
+  accident-monitor:
+    container_name: accident-monitor
+    build:
+      args:
+        BUILD_CONFIGURATION: Debug
+      context: ./accident-monitor/
+      dockerfile: Dockerfile
+    ports:
+      - "5000:80"
+      - "5001:443"
+    hostname: accident-monitor
+    depends_on:
+      accident-monitor-db:
+        condition: service_healthy
+        restart: true 
+      mosquitto:
+        condition: service_healthy
+        restart: true
+    volumes:
+      - ./accident-monitor/:/accident-monitor-app
+    environment:
+      ASPIRE_ALLOW_UNSECURED_TRANSPORT: true,
+      ConnectionStrings__AccidentMonitorDB: "Server=accident-monitor-db,1433;Database=AccidentMonitorDB;User Id=sa;Password=#TaoSieuDepTrai123;TrustServerCertificate=True;"
+      MqttConnectionConfig__Broker: "mosquitto"
+      MqttConnectionConfig__ClientId: "accident-monitor"
+      MqttConnectionConfig__Password: "Taodeptrai123@"
+      ORS__Uri: "http://ors-app"
+      ORS__Port: 80
+      ORS_BasePath: "/v2"
+      ORS__ApiKey: ""
+      ASPNETCORE_HTTP_PORTS: 80
+      # ASPNETCORE_HTTPS_PORTS: 443
+    networks:
+      - net_sim
+    restart: unless-stopped
+    # healthcheck:
+    #   test: ["CMD-SHELL", "curl -f http://localhost:80/health || exit 1"]
+    #   interval: 30s
+    #   retries: 5
+    #   start_period: 20s
+    #   timeout: 10s
