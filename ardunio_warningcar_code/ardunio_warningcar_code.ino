@@ -2,7 +2,7 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <TinyGPSPlus.h>
-// #include <SoftwareSerial.h>
+#include <NeoSWSerial.h>
 #include <SPI.h>
 #include <nRF24L01.h>
 #include <RF24.h>
@@ -11,26 +11,27 @@
 #include <String.h>
 #include <stdbool.h>
 
-#define CAR_ID "C6881"
+#define CAR_ID "30F256.58"
 #define GMT 7
-static const int RXPin = 1, TXPin = 0 ;
+static const int RXPin = 3, TXPin = 2;
 static const uint32_t GPSBaud = 9600;
 #define CE_PIN 9
 #define CSN_PIN 10
 
 enum Severity {
-  SLOW = 0,
-  SMEDIUM = 1,
-  SHIGH = 2
+  L = 0,
+  M = 1,
+  H = 2
 };
 
 TinyGPSPlus gps;
-// SoftwareSerial ss(RXPin, TXPin);
+NeoSWSerial ss(RXPin, TXPin);
 
 Adafruit_MPU6050 mpu;
 
 RF24 radio(CE_PIN, CSN_PIN);
 static const byte address[6] = "00001";
+static char jsonBuffer[32];
 
 static const int trig = 5;
 static const int echo = 6;
@@ -53,13 +54,13 @@ static void processDataMPU6050();
 static void getDistance();
 static Severity isAccident(float roll, float pitch, int distance);
 static void getCoordinates();
-static bool isBlockingWay(Severity sev);
-static String severityCar(Severity sev);
+static bool isBlockingWay(int sev);
+static String severityCar(int sev);
 
 void setup() {
   Serial.begin(9600); // Khởi động Serial với baudrate 9600
-  // ss.begin(GPSBaud); // Khởi động SoftwareSerial
-  // while (!Serial);
+  ss.begin(GPSBaud); // Khởi động SoftwareSerial
+  while (!Serial);
   pinMode(trig, OUTPUT);
   pinMode(echo, INPUT); 
 
@@ -80,49 +81,61 @@ void setup() {
 
   // Cấu hình cho nRF24L01+
   radio.openWritingPipe(address);
-  radio.setPALevel(RF24_PA_LOW);
+  radio.setPALevel(RF24_PA_HIGH);
   radio.setDataRate(RF24_250KBPS);
-  radio.setChannel(108);
+  radio.setChannel(124);
   radio.startListening();
+  radio.openWritingPipe(0xF0F0F0F0E1LL);
+  radio.openReadingPipe(0, address);
+  
+  Serial.println("San sang nhan du lieu...");
 }
 
 void loop() {
   getDistance();
   processDataMPU6050();
   delay(100);
-
-  // Phát tín hiệu cảnh báo khi góc nghiêng vượt quá điều kiện
-  // if (isAccident(roll, pitch, distance)) {
-  //   int count = 0;
-  //   while (1) {
-  //     getCoordinates();
-  //     delay(100);
-  //     sendData(dateTime, lng, lat);
-  //     // delay(1000);
-  //     count++;
-  //     if (count == 5) break;
-  //   }
-  // }
-
-  Severity acc = isAccident(roll, pitch, distance);
-  String sev = severityCar(acc);
-  bool bway = isBlockingWay(acc);
-  Serial.print("Severity is ");
-  Serial.println(sev);
-
-  Serial.print("Is block way: ");
-  Serial.println(bway);
   Serial.println(distance);
 
-  delay(250);
+  // Phát tín hiệu cảnh báo khi góc nghiêng vượt quá điều kiện
+  if (isAccident(roll, pitch, distance) >= 0) {
+    int count = 0;
+    while (1) {
+      getCoordinates();
+      // delay(100);
+      // sendData(dateTime, lng, lat);
+      // delay(1000);
+
+      // getCoordinates();
+      int day = d.day();
+      int month = d.month();
+      int year = d.year();
+      int hour = t.hour();
+      int minute = t.minute();
+      int second = t.second();
+      sprintf(dateTime, "%02d%02d%2d-%02d%02d%02d", day, month, year, hour + GMT, minute, second);
+      Serial.println(dateTime);
+      Serial.println(lng);
+      Serial.println(lat);
+      encodeGPS(1000);
+      // Serial.println(distance);
+
+      count++;
+      if (count == 2) {
+        delay(500);
+        break;
+      }
+    }
+  }  
+  // delay(100);
 }
 
 static void encodeGPS(unsigned long ms) {
   unsigned long start = millis();
   do 
   {
-    while (Serial.available())
-      gps.encode(Serial.read());
+    while (ss.available())
+      gps.encode(ss.read());
   } while (millis() - start < ms);
 }
 
@@ -151,9 +164,14 @@ static void getDistance() {
 }
 
 static Severity isAccident(float roll, float pitch, int distance) {
-  if (roll > 20 || roll < -20 || pitch > 30 || pitch < -30 || distance < 4) return 0;
-  if (roll > 30 || roll < -30 || pitch > 40 || pitch < -40 || distance < 3) return 1;
-  if (roll > 40 || roll < -40 || pitch > 50 || pitch < -50 || distance <= 1) return 2;
+  if (roll > 40 || roll < -40 || pitch > 50 || pitch < -50 || distance <= 1)
+    return 2;
+  else if (roll > 30 || roll < -30 || pitch > 40 || pitch < -40 || distance < 3)
+    return 1;
+  else if (roll > 20 || roll < -20 || pitch > 30 || pitch < -30 || distance < 5)
+    return 0;
+  else
+    return -1;
 }
 
 static void getCoordinates() {
@@ -170,13 +188,13 @@ static String severityCar(Severity sev) {
   String label;
 
   switch (sev) {
-    case SLOW:
+    case 0:
         label = "Low";
         break;
-    case SMEDIUM:
+    case 1:
         label = "Medium";
         break;
-    case SHIGH:
+    case 2:
         label = "High";
         break;
     default:
@@ -191,7 +209,7 @@ bool isBlockingWay(Severity sev) {
     case 0:
         return false;
     case 1:
-        return true;
+        return false;
     case 2:
         return true;
     default:
@@ -210,10 +228,12 @@ static void sendData(char* time, float lon, float lat) {
   int hour = t.hour();
   int minute = t.minute();
   int second = t.second();
-  String sev = severityCar(2);
-  bool block = isBlockingWay(2);
+  Severity acc = isAccident(roll, pitch, distance);
+  String sev = severityCar(acc);
+  bool block = isBlockingWay(acc);
   sprintf(dateTime, "%02d%02d%2d-%02d%02d%02d", day, month, year, hour + GMT, minute, second);
-  doc["VId"] = CAR_ID;
+  Serial.println("ALTER: Accident detection");
+  doc["v_id"] = CAR_ID;
   serializeJson(doc, jsonString);
   if (radio.write(&jsonString, sizeof(jsonString), true)) {
     Serial.println(jsonString);
@@ -289,4 +309,7 @@ static void sendData(char* time, float lon, float lat) {
   doc.clear();
   delay(100);
   radio.startListening();
+  delay(500);
+  Serial.println("--------------------------");
+
 }
