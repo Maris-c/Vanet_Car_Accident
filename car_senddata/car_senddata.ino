@@ -142,7 +142,6 @@ void loop() {
           delay(5000);
         }
         responseReceived = true;  // Đã nhận phản hồi => ngừng gửi tiếp
-
       }
     }
       temp = 0;

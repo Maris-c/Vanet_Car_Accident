@@ -44,7 +44,7 @@ static float roll, pitch;
 static float lng, lat;
 static TinyGPSDate d;
 static TinyGPSTime t;
-static char dateTime[17] = "";
+static char dateTime[21] = "";
 static int failCount = 0;
 
 static void printGPS();
@@ -79,55 +79,29 @@ void setup() {
   mpu.setGyroRange(MPU6050_RANGE_250_DEG);
   mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
 
+  const byte addressRSU[6] = "00000";
+  const byte addressPlubic[6] ="00001";
   // Cấu hình cho nRF24L01+
-  radio.openWritingPipe(address);
   radio.setPALevel(RF24_PA_HIGH);
   radio.setDataRate(RF24_250KBPS);
   radio.setChannel(124);
+  radio.openWritingPipe(addressRSU);
+  radio.openReadingPipe(0, addressPlubic);
   radio.startListening();
-  radio.openWritingPipe(0xF0F0F0F0E1LL);
-  radio.openReadingPipe(0, address);
-  
-  Serial.println("San sang nhan du lieu...");
 }
 
 void loop() {
   getDistance();
   processDataMPU6050();
   delay(100);
-  Serial.println(distance);
 
   // Phát tín hiệu cảnh báo khi góc nghiêng vượt quá điều kiện
-  if (isAccident(roll, pitch, distance) >= 0) {
-    int count = 0;
-    while (1) {
-      getCoordinates();
-      // delay(100);
-      // sendData(dateTime, lng, lat);
-      // delay(1000);
-
-      // getCoordinates();
-      int day = d.day();
-      int month = d.month();
-      int year = d.year();
-      int hour = t.hour();
-      int minute = t.minute();
-      int second = t.second();
-      sprintf(dateTime, "%02d%02d%2d-%02d%02d%02d", day, month, year, hour + GMT, minute, second);
-      Serial.println(dateTime);
-      Serial.println(lng);
-      Serial.println(lat);
-      encodeGPS(1000);
-      // Serial.println(distance);
-
-      count++;
-      if (count == 2) {
-        delay(500);
-        break;
-      }
-    }
+  if (isAccident(roll, pitch, distance) >= 1) {
+    getCoordinates();
+    delay(100);
+    sendData(dateTime, lng, lat);
   }  
-  // delay(100);
+  delay(100);
 }
 
 static void encodeGPS(unsigned long ms) {
@@ -231,85 +205,52 @@ static void sendData(char* time, float lon, float lat) {
   Severity acc = isAccident(roll, pitch, distance);
   String sev = severityCar(acc);
   bool block = isBlockingWay(acc);
-  sprintf(dateTime, "%02d%02d%2d-%02d%02d%02d", day, month, year, hour + GMT, minute, second);
+  sprintf(dateTime, "%02d-%02d-%2dT%02d%02d%02d.000Z", day, month, year, hour + GMT, minute, second);
   Serial.println("ALTER: Accident detection");
+
   doc["v_id"] = CAR_ID;
   serializeJson(doc, jsonString);
-  if (radio.write(&jsonString, sizeof(jsonString), true)) {
-    Serial.println(jsonString);
-  } else {
-    Serial.println("Error!");
-    failCount++;
-  }
+  radio.write(&jsonString, sizeof(jsonString));
+  Serial.println(jsonString);
   doc.clear();
   delay(100);
 
   doc["lat"] = (long int)(lat * 1000000);
   serializeJson(doc, jsonString);
-  if (radio.write(&jsonString, sizeof(jsonString), true)) {
+  radio.write(&jsonString, sizeof(jsonString));
   Serial.println(jsonString);
-  } else {
-    Serial.println("Error!");
-    failCount++;
-  }
-  if (failCount > 5) {
-    radio.begin();
-    Serial.println("Reset RF!");
-    failCount = 0;
-  }
   doc.clear();
   delay(100);
 
   doc["lon"] = (long int)(lon * 1000000);
   serializeJson(doc, jsonString);
-  if (radio.write(&jsonString, sizeof(jsonString), true)) {
-    Serial.println(jsonString);
-  } else {
-    Serial.println("Error!");
-    failCount++;
-  }
-  if (failCount > 5) {
-    radio.begin();
-    Serial.println("Reset RF!");
-    failCount = 0;
-  }
+  radio.write(&jsonString, sizeof(jsonString));
+  Serial.println(jsonString);
   doc.clear();
   delay(100);
 
   doc["t"] = dateTime;
   serializeJson(doc, jsonString);
-  if (radio.write(&jsonString, sizeof(jsonString), true)) {
-    Serial.println(jsonString);
-  } else {
-    Serial.println("Error!");
-    failCount++;
-  }
+  radio.write(&jsonString, sizeof(jsonString));
+  Serial.println(jsonString);   
   doc.clear();
   delay(100);
 
   doc["Severity"] = sev;
   serializeJson(doc, jsonString);
-  if (radio.write(&jsonString, sizeof(jsonString), true)) {
-    Serial.println(jsonString);
-  } else {
-    Serial.println("Error!");
-    failCount++;
-  }
+  radio.write(&jsonString, sizeof(jsonString));
+  Serial.println(jsonString);
   doc.clear();
   delay(100);
 
   doc["IsBlockingWay"] = block;
   serializeJson(doc, jsonString);
-  if (radio.write(&jsonString, sizeof(jsonString), true)) {
+  radio.write(&jsonString, sizeof(jsonString));
   Serial.println(jsonString);
-  } else {
-    Serial.println("Error!");
-    failCount++;
-  }
   doc.clear();
   delay(100);
-  radio.startListening();
-  delay(500);
-  Serial.println("--------------------------");
 
+  radio.startListening();
+  delay(100);
+  Serial.println("--------------------------");
 }
